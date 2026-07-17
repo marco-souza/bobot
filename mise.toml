@@ -1,0 +1,9 @@
+[env]
+_.file = ".env"
+
+[tasks]
+encrypt = "gpg -c .env"
+decrypt = "gpg -d .env.gpg > .env"
+
+[tools]
+go = "latest"
