@@ -5,16 +5,9 @@ import (
 	"strconv"
 )
 
-type discord struct {
-	AppID     string
-	PublicKey string
-	BotToken  string
-}
-
 type Config struct {
-	Port    int
-	Host    string
-	Discord discord
+	Port int
+	Host string
 }
 
 var Env *Config
@@ -33,10 +26,5 @@ func init() {
 	Env = &Config{
 		Host: host,
 		Port: port,
-		Discord: discord{
-			AppID:     os.Getenv("DISCORD_API_KEY"),
-			PublicKey: os.Getenv("DISCORD_PUBLIC_KEY"),
-			BotToken:  os.Getenv("DISCORD_BOT_TOKEN"),
-		},
 	}
 }

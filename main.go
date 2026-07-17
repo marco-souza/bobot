@@ -7,5 +7,10 @@ import (
 )
 
 func main() {
-	fmt.Println("bobot is here", config.Env)
+	authUrl := fmt.Sprintf(
+		"https://discord.com/oauth2/authorize?client_id=%s",
+		config.Discord.AppID,
+	)
+
+	fmt.Println("bobot is here:", authUrl)
 }
