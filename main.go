@@ -3,14 +3,9 @@ package main
 import (
 	"fmt"
 
-	"github.com/marco-souza/bobot/config"
+	"github.com/marco-souza/bobot/internal/discord"
 )
 
 func main() {
-	authUrl := fmt.Sprintf(
-		"https://discord.com/oauth2/authorize?client_id=%s",
-		config.Discord.AppID,
-	)
-
-	fmt.Println("bobot is here:", authUrl)
+	fmt.Println("bobot is here:", discord.Discord.InstallUrl())
 }
