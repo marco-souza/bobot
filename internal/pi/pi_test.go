@@ -16,7 +16,7 @@ func TestAskBuildsCorrectArgs(t *testing.T) {
 		// Fake a successful pi run that echoes a fixed reply to stdout.
 		return exec.Command("sh", "-c", "echo 'hi back'")
 	}
-	out, err := run(context.Background(), stub, "hello")
+	out, err := run(context.Background(), stub, "chan-123", "hello")
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -26,7 +26,7 @@ func TestAskBuildsCorrectArgs(t *testing.T) {
 
 	wantFlags := map[string]bool{
 		"-p": true, "--no-tools": true, "--no-context-files": true,
-		"--no-session": true, "--system-prompt": true,
+		"--session-id": true, "--session-dir": true, "--system-prompt": true,
 	}
 	for flag := range wantFlags {
 		if !contains(got, flag) {
@@ -40,6 +40,16 @@ func TestAskBuildsCorrectArgs(t *testing.T) {
 		t.Fatalf("system prompt missing/invalid: %v", got)
 	}
 
+	// Session id value is `chan-123`, right after --session-id.
+	if i = indexOf(got, "--session-id"); i < 0 || got[i+1] != "chan-123" {
+		t.Fatalf("session-id missing/invalid: %v", got)
+	}
+
+	// Session dir is the CWD-relative SessionDir constant.
+	if i = indexOf(got, "--session-dir"); i < 0 || got[i+1] != SessionDir {
+		t.Fatalf("session-dir missing/invalid: %v", got)
+	}
+
 	// User prompt is last.
 	if got[len(got)-1] != "hello" {
 		t.Fatalf("last arg=%q want %q", got[len(got)-1], "hello")
@@ -50,7 +60,7 @@ func TestAskPropagatesFailure(t *testing.T) {
 	stub := func(_ context.Context, args ...string) *exec.Cmd {
 		return exec.Command("sh", "-c", "exit 3")
 	}
-	if _, err := run(context.Background(), stub, "x"); err == nil {
+	if _, err := run(context.Background(), stub, "chan", "x"); err == nil {
 		t.Fatal("expected error on non-zero exit")
 	}
 }
@@ -63,7 +73,7 @@ func TestAskTimeoutHonorsDeadline(t *testing.T) {
 	}
 	defer func() { buildCmd = orig }()
 
-	if _, err := AskTimeout("hi", 20*time.Millisecond); err == nil {
+	if _, err := AskTimeout("chan", "hi", 20*time.Millisecond); err == nil {
 		t.Fatal("expected timeout error")
 	}
 }
@@ -75,7 +85,7 @@ func TestAskTrimsWhitespace(t *testing.T) {
 	}
 	defer func() { buildCmd = orig }()
 
-	got, err := Ask(context.Background(), "x")
+	got, err := Ask(context.Background(), "chan", "x")
 	if err != nil {
 		t.Fatalf("Ask: %v", err)
 	}

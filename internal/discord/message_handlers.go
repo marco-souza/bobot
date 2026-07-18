@@ -48,11 +48,16 @@ func reply(s *discordgo.Session, m *discordgo.MessageCreate, msg string) {
 }
 
 // answer routes m through a pi agent instance and posts the reply.
+// Session is keyed by m.ChannelID so a channel/thread/DM keeps shared memory;
+// the prompt is prefixed with the asker's name so pi sees who said what in a
+// multi-user channel without us tracking sender state.
 func answer(s *discordgo.Session, m *discordgo.MessageCreate) {
 	stop := triggerTyping(s, m.ChannelID)
 	defer stop()
 
-	out, err := pi.AskTimeout(m.Content, piTimeout)
+	sessionID := m.ChannelID
+	prompt := fmt.Sprintf("%s asked: %s", m.Author.Username, m.Content)
+	out, err := pi.AskTimeout(sessionID, prompt, piTimeout)
 	if err != nil {
 		fmt.Printf("pi answer: %v", err)
 		out = "⚠️ couldn't reach the agent"

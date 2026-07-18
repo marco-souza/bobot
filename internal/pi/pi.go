@@ -15,11 +15,14 @@ import (
 const systemPrompt = "You are bobot, a concise assistant in a Discord chat. " +
 	"Reply briefly and conversationally. No code blocks unless asked."
 
-// Ask runs a non-interactive pi instance with prompt and returns its output.
-// It is the one seam between bobot and the pi binary: everything upstream just
-// hands it a prompt string, everything downstream consumes a reply string.
-func Ask(ctx context.Context, prompt string) (string, error) {
-	out, err := run(ctx, buildCmd, prompt)
+// SessionDir is CWD-relative so bobot's sessions stay isolated from the
+// operator's own global pi session store; cleanup is `rm -rf ./sessions`.
+const SessionDir = "./sessions"
+
+// Ask runs a non-interactive pi instance scoped to sessionID, so each Discord
+// channel/thread carries its own conversation memory across turns.
+func Ask(ctx context.Context, sessionID, prompt string) (string, error) {
+	out, err := run(ctx, buildCmd, sessionID, prompt)
 	if err != nil {
 		return "", fmt.Errorf("pi: %w", err)
 	}
@@ -27,10 +30,10 @@ func Ask(ctx context.Context, prompt string) (string, error) {
 }
 
 // AskTimeout is Ask with a bounded deadline.
-func AskTimeout(prompt string, d time.Duration) (string, error) {
+func AskTimeout(sessionID, prompt string, d time.Duration) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), d)
 	defer cancel()
-	return Ask(ctx, prompt)
+	return Ask(ctx, sessionID, prompt)
 }
 
 // commandFunc builds the exec.Cmd for a prompt; overridable in tests.
@@ -40,16 +43,19 @@ var buildCmd commandFunc = func(ctx context.Context, args ...string) *exec.Cmd {
 	return exec.CommandContext(ctx, "pi", args...)
 }
 
-// run executes buildCmd for prompt and returns its stdout.
-func run(ctx context.Context, build commandFunc, prompt string) (string, error) {
-	// ponytail: no-tools/no-context-files/no-session keeps this a pure chat turn,
-	// no file access, no project AGENTS.md leaking, no clutter on disk. Upgrade
-	// to a persistent per-thread session if conversation continuity is wanted.
+// run executes buildCmd for prompt scoped to sessionID and returns its stdout.
+func run(ctx context.Context, build commandFunc, sessionID, prompt string) (string, error) {
+	// ponytail: no-tools/no-context-files keep this a pure chat turn (no file
+	// access, no project AGENTS.md leaking). --session-id + --session-dir give
+	// per-channel memory isolated from the operator's own pi sessions; pi does
+	// create-if-missing/continue-if-exists for free here. Upgrade to GC if
+	// ./sessions growth ever matters.
 	args := []string{
 		"-p",
 		"--no-tools",
 		"--no-context-files",
-		"--no-session",
+		"--session-dir", SessionDir,
+		"--session-id", sessionID,
 		"--system-prompt", systemPrompt,
 		prompt,
 	}
