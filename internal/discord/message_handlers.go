@@ -2,7 +2,7 @@ package discord
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"time"
 
@@ -23,7 +23,11 @@ const typingInterval = 8 * time.Second
 // block the reply path.
 func triggerTyping(s *discordgo.Session, ch string) (stop func()) {
 	done := make(chan struct{})
-	tick := func() { if err := s.ChannelTyping(ch); err != nil { log.Printf("typing: %v", err) } }
+	tick := func() {
+		if err := s.ChannelTyping(ch); err != nil {
+			slog.Warn("typing burst", "err", err, "channel_id", ch)
+		}
+	}
 	tick()
 	go func() {
 		t := time.NewTicker(typingInterval)
@@ -40,10 +44,13 @@ func triggerTyping(s *discordgo.Session, ch string) (stop func()) {
 	return func() { select { case <-done: default: close(done) } }
 }
 
-// reply sends msg as a Discord reply tagged to m.
+// reply posts msg in response to m. SoftReference (FailIfNotExists=false) so
+// a deleted-or-missing origin falls back to a plain message instead of
+// erroring: the post must always land, or the typing indicator keeps its
+// ~10s post-burst tail indefinitely (the dangling symptom).
 func reply(s *discordgo.Session, m *discordgo.MessageCreate, msg string) {
-	if _, err := s.ChannelMessageSendReply(m.ChannelID, msg, m.Reference()); err != nil {
-		fmt.Printf("send reply: %v", err)
+	if _, err := s.ChannelMessageSendReply(m.ChannelID, msg, m.SoftReference()); err != nil {
+		slog.Error("send reply", "err", err, "channel_id", m.ChannelID)
 	}
 }
 
@@ -56,15 +63,18 @@ func answer(s *discordgo.Session, m *discordgo.MessageCreate) {
 	defer stop()
 
 	sessionID := m.ChannelID
+	slog.Info("answering", "channel_id", sessionID, "author", m.Author.Username, "dm", isDirectMessage(m))
+
 	prompt := fmt.Sprintf("%s asked: %s", m.Author.Username, m.Content)
 	out, err := pi.AskTimeout(sessionID, prompt, piTimeout)
 	if err != nil {
-		fmt.Printf("pi answer: %v", err)
+		slog.Error("pi answer", "err", err, "channel_id", sessionID)
 		out = "⚠️ couldn't reach the agent"
 	}
 	if out == "" {
 		out = "(no response)"
 	}
+	slog.Info("replying", "channel_id", sessionID, "len", len(out))
 	reply(s, m, out)
 }
 
@@ -112,7 +122,7 @@ func registerCommands(s *discordgo.Session, appID string) error {
 	if _, err := s.ApplicationCommandBulkOverwrite(appID, "", commands); err != nil {
 		return err
 	}
-	log.Println("slash command registered: clear (global commands may take up to ~1h to appear)")
+	slog.Info("commands registered", "commands", "clear", "note", "global commands may take up to ~1h to appear")
 	return nil
 }
 
@@ -127,10 +137,11 @@ func onInteractionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 // Ephemeral reply so it doesn't spam the channel.
 func handleClear(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if err := pi.ClearSession(i.ChannelID); err != nil {
-		log.Printf("clear: %v", err)
+		slog.Error("clear session", "err", err, "channel_id", i.ChannelID)
 		respondEphemeral(s, i, "⚠️ clear failed: "+err.Error())
 		return
 	}
+	slog.Info("session cleared", "channel_id", i.ChannelID)
 	respondEphemeral(s, i, "🧹 Memory cleared for this channel.")
 }
 
@@ -141,7 +152,7 @@ func respondEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate, msg 
 		Data: &discordgo.InteractionResponseData{Content: msg, Flags: discordgo.MessageFlagsEphemeral},
 	})
 	if err != nil {
-		log.Printf("interaction respond: %v", err)
+		slog.Error("interaction respond", "err", err, "channel_id", i.ChannelID)
 	}
 }
 

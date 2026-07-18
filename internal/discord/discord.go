@@ -2,6 +2,7 @@ package discord
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -23,7 +24,7 @@ func Run() error {
 		discordgo.IntentsMessageContent
 
 	appID := os.Getenv("DISCORD_APP_ID")
-	fmt.Printf("Invite bobot: %s\n", botInvite(appID))
+	slog.Info("invite link ready", "url", botInvite(appID))
 
 	if err := s.Open(); err != nil {
 		return fmt.Errorf("open discord connection: %w", err)
@@ -34,7 +35,7 @@ func Run() error {
 		return fmt.Errorf("register commands: %w", err)
 	}
 
-	fmt.Println("bobot is running. Press Ctrl+C to exit.")
+	slog.Info("bobot running; press Ctrl+C to exit")
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
