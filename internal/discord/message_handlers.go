@@ -102,6 +102,49 @@ func token() string {
 	return "Bot " + os.Getenv("DISCORD_BOT_TOKEN")
 }
 
+// commands is the full set of bobot slash commands; registerCommands bulk-
+// overwrites them on startup so re-runs don't accumulate duplicates.
+var commands = []*discordgo.ApplicationCommand{
+	{Name: "clear", Description: "Clear bobot's memory for this channel."},
+}
+
+func registerCommands(s *discordgo.Session, appID string) error {
+	if _, err := s.ApplicationCommandBulkOverwrite(appID, "", commands); err != nil {
+		return err
+	}
+	log.Println("slash command registered: clear (global commands may take up to ~1h to appear)")
+	return nil
+}
+
+// onInteractionCreate routes a slash command to its handler.
+func onInteractionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if i.ApplicationCommandData().Name == "clear" {
+		handleClear(s, i)
+	}
+}
+
+// handleClear wipes pi's session file for the channel and tells the caller.
+// Ephemeral reply so it doesn't spam the channel.
+func handleClear(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if err := pi.ClearSession(i.ChannelID); err != nil {
+		log.Printf("clear: %v", err)
+		respondEphemeral(s, i, "⚠️ clear failed: "+err.Error())
+		return
+	}
+	respondEphemeral(s, i, "🧹 Memory cleared for this channel.")
+}
+
+// respondEphemeral acknowledges an interaction with a message only the caller sees.
+func respondEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate, msg string) {
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{Content: msg, Flags: discordgo.MessageFlagsEphemeral},
+	})
+	if err != nil {
+		log.Printf("interaction respond: %v", err)
+	}
+}
+
 const botInviteURL = "https://discord.com/oauth2/authorize?client_id=%s&scope=bot"
 
 func botInvite(appID string) string {

@@ -6,7 +6,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -17,7 +19,8 @@ const systemPrompt = "You are bobot, a concise assistant in a Discord chat. " +
 
 // SessionDir is CWD-relative so bobot's sessions stay isolated from the
 // operator's own global pi session store; cleanup is `rm -rf ./sessions`.
-const SessionDir = "./sessions"
+// var (not const) so tests can point it at a temp dir.
+var SessionDir = "./sessions"
 
 // Ask runs a non-interactive pi instance scoped to sessionID, so each Discord
 // channel/thread carries its own conversation memory across turns.
@@ -34,6 +37,27 @@ func AskTimeout(sessionID, prompt string, d time.Duration) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), d)
 	defer cancel()
 	return Ask(ctx, sessionID, prompt)
+}
+
+// ClearSession deletes the on-disk session file for sessionID if any.
+// Matches pi's layout `<session-dir>/<timestamp>_<session-id>.jsonl`.
+// ponytail: glob-and-remove is safe because our sessionID is a Discord
+// channel ID (numeric snowflake, no glob meta); escape if session keys ever
+// carry shell/glob characters.
+func ClearSession(sessionID string) error {
+	matches, err := filepath.Glob(filepath.Join(SessionDir, "*_"+sessionID+".jsonl"))
+	if err != nil {
+		return fmt.Errorf("glob sessions: %w", err)
+	}
+	if len(matches) == 0 {
+		return nil
+	}
+	for _, p := range matches {
+		if err := os.Remove(p); err != nil {
+			return fmt.Errorf("remove %s: %w", p, err)
+		}
+	}
+	return nil
 }
 
 // commandFunc builds the exec.Cmd for a prompt; overridable in tests.

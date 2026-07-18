@@ -3,7 +3,9 @@ package pi
 import (
 	"bytes"
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -91,6 +93,43 @@ func TestAskTrimsWhitespace(t *testing.T) {
 	}
 	if got != "padded" {
 		t.Fatalf("Ask=%q want %q", got, "padded")
+	}
+}
+
+func TestClearSessionRemovesMatchedFiles(t *testing.T) {
+	orig := SessionDir
+	dir := t.TempDir()
+	SessionDir = dir
+	defer func() { SessionDir = orig }()
+
+	target := filepath.Join(dir, "2026-01-01T00-00-00-000Z_chan-1.jsonl")
+	if err := os.WriteFile(target, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	// unrelated session for a different channel must be left intact.
+	other := filepath.Join(dir, "2026-01-01T00-00-00-000Z_chan-2.jsonl")
+	if err := os.WriteFile(other, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	if err := ClearSession("chan-1"); err != nil {
+		t.Fatalf("ClearSession: %v", err)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("target still exists: %v", err)
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Fatalf("other removed: %v", err)
+	}
+}
+
+func TestClearSessionNoSessionIsNoop(t *testing.T) {
+	orig := SessionDir
+	SessionDir = t.TempDir()
+	defer func() { SessionDir = orig }()
+
+	if err := ClearSession("nonexistent"); err != nil {
+		t.Fatalf("expected nil on missing session, got %v", err)
 	}
 }
 

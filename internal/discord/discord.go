@@ -17,16 +17,22 @@ func Run() error {
 	}
 
 	s.AddHandler(onMessageCreate)
+	s.AddHandler(onInteractionCreate)
 	s.Identify.Intents = discordgo.IntentsDirectMessages |
 		discordgo.IntentsGuildMessages |
 		discordgo.IntentsMessageContent
 
-	fmt.Printf("Invite bobot: %s\n", botInvite(os.Getenv("DISCORD_APP_ID")))
+	appID := os.Getenv("DISCORD_APP_ID")
+	fmt.Printf("Invite bobot: %s\n", botInvite(appID))
 
 	if err := s.Open(); err != nil {
 		return fmt.Errorf("open discord connection: %w", err)
 	}
 	defer s.Close()
+
+	if err := registerCommands(s, appID); err != nil {
+		return fmt.Errorf("register commands: %w", err)
+	}
 
 	fmt.Println("bobot is running. Press Ctrl+C to exit.")
 
