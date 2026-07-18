@@ -2,6 +2,7 @@ package discord
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -13,6 +14,32 @@ import (
 // gateway; Discord replies usually arrive within a minute or two.
 const piTimeout = 5 * time.Minute
 
+// typingInterval refreshes the typing indicator while a pi turn is in flight;
+// a single ChannelTyping burst expires after ~10s, so we resend before that.
+const typingInterval = 8 * time.Second
+
+// triggerTyping starts repeated typing bursts on ch until the returned stop
+// function is called. Failures are swallowed: a missing indicator should never
+// block the reply path.
+func triggerTyping(s *discordgo.Session, ch string) (stop func()) {
+	done := make(chan struct{})
+	tick := func() { if err := s.ChannelTyping(ch); err != nil { log.Printf("typing: %v", err) } }
+	tick()
+	go func() {
+		t := time.NewTicker(typingInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				tick()
+			}
+		}
+	}()
+	return func() { select { case <-done: default: close(done) } }
+}
+
 // reply sends msg as a Discord reply tagged to m.
 func reply(s *discordgo.Session, m *discordgo.MessageCreate, msg string) {
 	if _, err := s.ChannelMessageSendReply(m.ChannelID, msg, m.Reference()); err != nil {
@@ -22,6 +49,9 @@ func reply(s *discordgo.Session, m *discordgo.MessageCreate, msg string) {
 
 // answer routes m through a pi agent instance and posts the reply.
 func answer(s *discordgo.Session, m *discordgo.MessageCreate) {
+	stop := triggerTyping(s, m.ChannelID)
+	defer stop()
+
 	out, err := pi.AskTimeout(m.Content, piTimeout)
 	if err != nil {
 		fmt.Printf("pi answer: %v", err)
