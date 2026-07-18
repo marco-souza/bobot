@@ -5,18 +5,22 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![quality](https://github.com/marco-souza/bobot/actions/workflows/quality.yml/badge.svg)](https://github.com/marco-souza/bobot/actions/workflows/quality.yml)
 
-A small Discord bot that replies to direct messages and `@mentions`, written
-in Go on top of [`discordgo`](https://github.com/bwmarrin/discordgo).
+A Discord gateway to [pi](https://github.com/marco-souza/pi) coding-agent
+instances — talk to your agents from a server channel or DM instead of a
+terminal. Written in Go on top of [`discordgo`](https://github.com/bwmarrin/discordgo).
 
 ## Overview
 
-bobot listens for messages and responds when:
+bobot bridges Discord and pi: each conversation (a DM, or an `@mention` / reply
+in a server channel) is routed to a pi agent instance, and the agent's response
+is posted back as a Discord reply tagged to the original message.
 
-- a user sends it a private direct message; or
-- a user `@mentions` it in a server channel; or
-- a user replies to one of bobot's own messages.
+- DM bobot → a private agent session.
+- `@bobot` in a server channel, or reply to one of bobot's messages → an agent
+  session scoped to that thread.
 
-Replies are sent as Discord reply references, so they tag the original message.
+Only the trigger routing is implemented today; pi instance invocation is the
+next milestone.
 
 ## Usage
 
