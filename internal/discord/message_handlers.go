@@ -41,7 +41,13 @@ func triggerTyping(s *discordgo.Session, ch string) (stop func()) {
 			}
 		}
 	}()
-	return func() { select { case <-done: default: close(done) } }
+	return func() {
+		select {
+		case <-done:
+		default:
+			close(done)
+		}
+	}
 }
 
 // reply posts msg in response to m. SoftReference (FailIfNotExists=false) so
