@@ -12,6 +12,7 @@ import (
 )
 
 func TestAskBuildsCorrectArgs(t *testing.T) {
+	t.Setenv("BOBOT_TOOLS", "") // default: persona-only -> --no-tools
 	var got []string
 	stub := func(_ context.Context, args ...string) *exec.Cmd {
 		got = append(got, args...)
@@ -130,6 +131,49 @@ func TestClearSessionNoSessionIsNoop(t *testing.T) {
 
 	if err := ClearSession("nonexistent"); err != nil {
 		t.Fatalf("expected nil on missing session, got %v", err)
+	}
+}
+
+func TestToolFlagsNoToolsByDefault(t *testing.T) {
+	t.Setenv("BOBOT_TOOLS", "")
+	flags := toolFlags()
+	if len(flags) != 1 || flags[0] != "--no-tools" {
+		t.Fatalf("default want [--no-tools], got %v", flags)
+	}
+}
+
+func TestToolFlagsAllowlist(t *testing.T) {
+	t.Setenv("BOBOT_TOOLS", "brave_search,web")
+	flags := toolFlags()
+	if len(flags) != 2 || flags[0] != "--tools" || flags[1] != "brave_search,web" {
+		t.Fatalf("allowlist want [--tools brave_search,web], got %v", flags)
+	}
+}
+
+func TestToolFlagsAll(t *testing.T) {
+	t.Setenv("BOBOT_TOOLS", "all")
+	if flags := toolFlags(); flags != nil {
+		t.Fatalf("all want nil (no flag), got %v", flags)
+	}
+}
+
+// TestAskStderrExcludedFromReply guards the regression where pi's stderr
+// diagnostics (e.g. "Warning: No project session found...") leaked into the
+// Discord reply because stdout and stderr shared a buffer. Reply = stdout only.
+func TestAskStderrExcludedFromReply(t *testing.T) {
+	orig := buildCmd
+	buildCmd = func(ctx context.Context, args ...string) *exec.Cmd {
+		// reply on stdout, diagnostic noise on stderr
+		return exec.Command("sh", "-c", "echo 'Warning: No project session found' >&2; echo 'hi back'")
+	}
+	defer func() { buildCmd = orig }()
+
+	got, err := Ask(context.Background(), "chan", "x")
+	if err != nil {
+		t.Fatalf("Ask: %v", err)
+	}
+	if got != "hi back" {
+		t.Fatalf("reply=%q want %q (stderr leaked)", got, "hi back")
 	}
 }
 

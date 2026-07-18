@@ -6,12 +6,20 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 )
+
+// BoBot opens extension/skill tools only when an operator explicitly opts in via
+// BOBOT_TOOLS. Trust-boundary decision: keep the safe default unless asked.
+//
+//   BOBOT_TOOLS unset  -> "--no-tools"      (persona-only, current safe default)
+//   BOBOT_TOOLS=a,b    -> "--tools a,b"      (allowlisted extension tools live)
+//   BOBOT_TOOLS=all    -> no flag            (every tool enabled; explicit risk)
 
 // systemPrompt is the assistant persona pi adopts for Discord replies.
 const systemPrompt = "You are bobot, a concise assistant in a Discord chat. " +
@@ -60,6 +68,19 @@ func ClearSession(sessionID string) error {
 	return nil
 }
 
+// toolFlags returns the pi flags that control which tools (built-in +
+// extension + skill) are available during a turn. See BoBot BOBOT_TOOLS doc above.
+func toolFlags() []string {
+	switch v := os.Getenv("BOBOT_TOOLS"); v {
+	case "":
+		return []string{"--no-tools"}
+	case "all":
+		return nil // no flag -> everything pi would load is enabled
+	default:
+		return []string{"--tools", v}
+	}
+}
+
 // commandFunc builds the exec.Cmd for a prompt; overridable in tests.
 type commandFunc func(ctx context.Context, args ...string) *exec.Cmd
 
@@ -74,23 +95,32 @@ func run(ctx context.Context, build commandFunc, sessionID, prompt string) (stri
 	// per-channel memory isolated from the operator's own pi sessions; pi does
 	// create-if-missing/continue-if-exists for free here. Upgrade to GC if
 	// ./sessions growth ever matters.
-	args := []string{
-		"-p",
-		"--no-tools",
+	args := []string{"-p"}
+	args = append(args, toolFlags()...)
+	args = append(args,
 		"--no-context-files",
 		"--session-dir", SessionDir,
 		"--session-id", sessionID,
 		"--system-prompt", systemPrompt,
 		prompt,
-	}
+	)
 	cmd := build(ctx, args...)
 	cmd.Stdin = io.NopCloser(bytes.NewReader(nil))
 
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	if err := cmd.Run(); err != nil {
-		return out.String(), fmt.Errorf("run %q: %w", strings.Join(args, " "), err)
+	// stdout = pi's reply text; stderr = diagnostics (e.g. 'Warning: No project
+	// session found...'). Keeping them separate stops diagnostics from leaking
+	// into the Discord reply; stderr is logged instead. ponytail: no flag suppresses
+	// that 'creating a new session' line, so route it to logs, not the user.
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if stderr.Len() > 0 {
+		slog.Debug("pi stderr", "session_id", sessionID, "stderr", strings.TrimSpace(stderr.String()))
 	}
-	return out.String(), nil
+	if err != nil {
+		return stdout.String(), fmt.Errorf("run %q: %w (stderr: %s)",
+			strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.String(), nil
 }
