@@ -2,28 +2,53 @@ package discord
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/bwmarrin/discordgo"
 )
 
-type discord struct {
-	AppID     string
-	PublicKey string
-	BotToken  string
-}
-
-var Discord *discord
-
-func init() {
-	Discord = &discord{
-		AppID:     os.Getenv("DISCORD_APP_ID"),
-		PublicKey: os.Getenv("DISCORD_PUBLIC_KEY"),
-		BotToken:  os.Getenv("DISCORD_BOT_TOKEN"),
+// Run starts the bot and blocks until interrupted by SIGINT/SIGTERM.
+func Run() error {
+	s, err := discordgo.New(token())
+	if err != nil {
+		return fmt.Errorf("create discord session: %w", err)
 	}
+
+	s.AddHandler(onMessageCreate)
+	s.Identify.Intents = discordgo.IntentsDirectMessages |
+		discordgo.IntentsGuildMessages |
+		discordgo.IntentsMessageContent
+
+	fmt.Printf("Invite bobot: %s\n", botInvite(os.Getenv("DISCORD_APP_ID")))
+
+	if err := s.Open(); err != nil {
+		return fmt.Errorf("open discord connection: %w", err)
+	}
+	defer s.Close()
+
+	log.Println("bobot is running. Press Ctrl+C to exit.")
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	<-stop
+
+	return nil
 }
 
-func (d *discord) InstallUrl() string {
-	return fmt.Sprintf(
-		"https://discord.com/oauth2/authorize?client_id=%s",
-		d.AppID,
-	)
+// onMessageCreate routes an incoming message to the right reply path.
+func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+	if m.Author.Bot {
+		return
+	}
+
+	switch {
+	case isDirectMessage(m):
+		reply(s, m, "Hey! What's up?")
+
+	case mentionsBot(s, m), replyingToBot(s, m):
+		reply(s, m, "You called?")
+	}
 }

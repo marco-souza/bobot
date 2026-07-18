@@ -1,11 +1,13 @@
 package main
 
 import (
-	"fmt"
+	"log"
 
 	"github.com/marco-souza/bobot/internal/discord"
 )
 
 func main() {
-	fmt.Println("bobot is here:", discord.Discord.InstallUrl())
+	if err := discord.Run(); err != nil {
+		log.Fatal(err)
+	}
 }
