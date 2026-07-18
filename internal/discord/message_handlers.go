@@ -14,6 +14,22 @@ import (
 // gateway; Discord replies usually arrive within a minute or two.
 const piTimeout = 5 * time.Minute
 
+// discordMsgLimit is Discord's hard cap on message content length.
+const discordMsgLimit = 2000
+
+// truncateForDiscord caps msg at discordMsgLimit runes on a rune boundary and
+// appends an ellipsis when truncated.
+// ponytail: rune-count assumes BMP content; astral emojis (4-byte UTF-8,
+// surrogate pair in UTF-16) can still push Discord's UTF-16 count to 2002 —
+// switch to utf-16 length counting if emoji-heavy replies ever fail to post.
+func truncateForDiscord(msg string) string {
+	r := []rune(msg)
+	if len(r) <= discordMsgLimit {
+		return msg
+	}
+	return string(r[:discordMsgLimit-1]) + "…"
+}
+
 // typingInterval refreshes the typing indicator while a pi turn is in flight;
 // a single ChannelTyping burst expires after ~10s, so we resend before that.
 const typingInterval = 8 * time.Second
@@ -80,7 +96,9 @@ func answer(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if out == "" {
 		out = "(no response)"
 	}
-	slog.Info("replying", "channel_id", sessionID, "len", len(out))
+	truncated := len([]rune(out)) > discordMsgLimit
+	out = truncateForDiscord(out)
+	slog.Info("replying", "channel_id", sessionID, "len", len(out), "truncated", truncated)
 	reply(s, m, out)
 }
 

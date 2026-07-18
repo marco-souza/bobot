@@ -1,6 +1,7 @@
 package discord
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/bwmarrin/discordgo"
@@ -108,5 +109,46 @@ func TestBotInvite(t *testing.T) {
 	want := "https://discord.com/oauth2/authorize?client_id=123&scope=bot"
 	if got != want {
 		t.Fatalf("botInvite=%q want %q", got, want)
+	}
+}
+
+func TestTruncateForDiscord(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			"short passes through",
+			"hello",
+			"hello",
+		},
+		{
+			"at limit passes through",
+			strings.Repeat("x", discordMsgLimit),
+			strings.Repeat("x", discordMsgLimit),
+		},
+		{
+			"over limit capped with ellipsis",
+			strings.Repeat("x", discordMsgLimit+50),
+			strings.Repeat("x", discordMsgLimit-1) + "…",
+		},
+		{
+			"multibyte rune-safe boundary",
+			strings.Repeat("�", discordMsgLimit+10),
+			strings.Repeat("�", discordMsgLimit-1) + "…",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := truncateForDiscord(tc.in)
+			if got != tc.want {
+				t.Fatalf("truncateForDiscord len_in=%d len_out=%d want_len=%d",
+					len(tc.in), len(got), len(tc.want))
+			}
+			// hard guarantee: result never exceeds Discord's cap.
+			if len([]rune(got)) > discordMsgLimit {
+				t.Fatalf("result %d runes exceeds limit %d", len([]rune(got)), discordMsgLimit)
+			}
+		})
 	}
 }
