@@ -2,7 +2,6 @@ package discord
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -29,7 +28,7 @@ func Run() error {
 	}
 	defer s.Close()
 
-	log.Println("bobot is running. Press Ctrl+C to exit.")
+	fmt.Println("bobot is running. Press Ctrl+C to exit.")
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
@@ -46,9 +45,9 @@ func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	switch {
 	case isDirectMessage(m):
-		reply(s, m, "Hey! What's up?")
+		answer(s, m)
 
 	case mentionsBot(s, m), replyingToBot(s, m):
-		reply(s, m, "You called?")
+		answer(s, m)
 	}
 }
